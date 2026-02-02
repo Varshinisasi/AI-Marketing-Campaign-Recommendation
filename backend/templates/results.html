@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Scraped Results</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h2>Scraped Products</h2>
+        <p><b>Source:</b> {{ url }}</p>
+
+        <table>
+            <tr>
+                <th>Product Name</th>
+                <th>Price</th>
+                <th>Availability</th>
+            </tr>
+
+            {% for product in products %}
+            <tr>
+                <td>{{ product.title }}</td>
+                <td>{{ product.price }}</td>
+                <td>{{ product.availability }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <br>
+        <a href="/">⬅ Go Back</a>
+    </div>
+</body>
+</html>
