@@ -2,29 +2,30 @@ import streamlit as st
 import requests
 import pandas as pd
 
-st.set_page_config(page_title="AI Marketing Campaign System")
+st.set_page_config(page_title="AI Marketing Campaign Scraper", layout="centered")
 
-st.title("🧠 AI-Based Marketing Campaign Recommendation System")
+st.title("AI-Based Marketing Campaign Recommendation System")
 st.subheader("Enter E-Commerce Store URL")
 
-url = st.text_input("Enter product or category URL")
+url = st.text_input("Website URL", "https://books.toscrape.com")
 
-if st.button("Analyze Store"):
-    if url.strip():
-        with st.spinner("Scraping data..."):
-            try:
-                response = requests.get(
-                    "http://localhost:8000/scrape",
-                    params={"url": url},
-                    timeout=30
-                )
-                data = response.json()
+if st.button("Scrape Data"):
+    with st.spinner("Scraping website..."):
+        try:
+            response = requests.post(
+                "http://127.0.0.1:8000/scrape",
+                json={"url": url},
+                timeout=15
+            )
 
-                st.success(f"Scraping Method Used: {data['scraping_method']}")
-                df = pd.DataFrame(data["products"])
+            data = response.json()
+
+            if "results" in data and len(data["results"]) > 0:
+                df = pd.DataFrame(data["results"])
+                st.success("Scraping successful!")
                 st.dataframe(df)
+            else:
+                st.error("No data found or website not supported")
 
-            except Exception as e:
-                st.error("Backend not running or invalid URL")
-    else:
-        st.warning("Please enter a valid URL")
+        except Exception as e:
+            st.error(f"Backend not running or invalid URL\n{e}")

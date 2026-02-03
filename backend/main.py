@@ -1,21 +1,28 @@
 from fastapi import FastAPI
-from backend.scraper.static_scraper import scrape_static
-from backend.scraper.dynamic_scraper import scrape_dynamic
-from backend.scraper.utils import is_dynamic_site
+from fastapi.middleware.cors import CORSMiddleware
+from backend.scraper.generic_scraper import generic_scrape
 
+app = FastAPI()
 
-app = FastAPI(title="AI Marketing Campaign Scraper")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.get("/scrape")
-def scrape(url: str):
-    if is_dynamic_site(url):
-        data = scrape_dynamic(url)
-        method = "Dynamic (Selenium)"
-    else:
-        data = scrape_static(url)
-        method = "Static (BeautifulSoup)"
+@app.get("/")
+def home():
+    return {"status": "running"}
 
-    return {
-        "scraping_method": method,
-        "products": data
-    }
+@app.post("/scrape")
+def scrape_site(data: dict):
+    url = data.get("url")
+    if not url:
+        return {"error": "URL not provided"}
+
+    try:
+        products = generic_scrape(url)
+        return {"results": products}
+    except Exception as e:
+        return {"error": str(e)}
