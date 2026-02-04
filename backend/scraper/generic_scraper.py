@@ -1,4 +1,5 @@
 import json
+import re
 import requests
 from bs4 import BeautifulSoup
 from typing import List, Dict, Optional
@@ -37,7 +38,7 @@ def _is_shopify(html: str, soup: BeautifulSoup) -> bool:
 
 
 def _extract_products_from_ld(ld_obj) -> List[Dict]:
-    """Extract product info (title/price/availability) from JSON-LD objects."""
+    """Extract product info (title/price/availability/rating/reviews) from JSON-LD objects."""
     products: List[Dict] = []
 
     def handle(obj):
@@ -72,6 +73,28 @@ def _extract_products_from_ld(ld_obj) -> List[Dict]:
             if "availability" in offers:
                 availability = str(offers.get("availability")).split("/")[-1]
 
+            # Rating and reviews from aggregateRating / review fields
+            rating = None
+            reviews = None
+
+            aggregate = obj.get("aggregateRating") or {}
+            if isinstance(aggregate, list):
+                aggregate = aggregate[0] if aggregate else {}
+
+            if isinstance(aggregate, dict):
+                rating = aggregate.get("ratingValue") or aggregate.get(
+                    "bestRating"
+                )
+                reviews = (
+                    aggregate.get("reviewCount")
+                    or aggregate.get("ratingCount")
+                    or reviews
+                )
+
+            # If explicit reviews list is present, use its length as count
+            if reviews is None and isinstance(obj.get("review"), list):
+                reviews = len(obj["review"])
+
             if name or price:
                 # Fill missing fields with readable placeholders
                 products.append(
@@ -79,6 +102,8 @@ def _extract_products_from_ld(ld_obj) -> List[Dict]:
                         "title": (name or "Unknown title"),
                         "price": str(price) if price is not None else "N/A",
                         "availability": availability or "Unknown",
+                        "rating": str(rating) if rating is not None else "N/A",
+                        "reviews": str(reviews) if reviews is not None else "N/A",
                     }
                 )
 
@@ -193,6 +218,31 @@ def _parse_products_from_soup(soup: BeautifulSoup) -> List[Dict]:
                     or _get_text_or_none(availability_el)
                 )
 
+            # Rating candidates
+            rating_el = (
+                card.select_one("[itemprop='ratingValue']")
+                or card.select_one("[class*='rating']")
+                or card.select_one("[class*='star']")
+            )
+            rating = None
+            if rating_el:
+                # Look for a number like "4.5" or "4"
+                m = re.search(r"\d+(\.\d+)?", rating_el.get_text(" ", strip=True))
+                if m:
+                    rating = m.group(0)
+
+            # Reviews count candidates
+            reviews_el = (
+                card.select_one("[itemprop='reviewCount']")
+                or card.select_one("[class*='review']")
+                or card.select_one("[class*='reviews']")
+            )
+            reviews = None
+            if reviews_el:
+                m = re.search(r"\d+", reviews_el.get_text(" ", strip=True))
+                if m:
+                    reviews = m.group(0)
+
             # Build a product row if we have at least a title or price.
             # Try extra fallbacks so cells are not blank.
             if title or price:
@@ -211,6 +261,8 @@ def _parse_products_from_soup(soup: BeautifulSoup) -> List[Dict]:
                         "title": title or "Unknown title",
                         "price": price or "N/A",
                         "availability": availability or "Unknown",
+                        "rating": rating or "N/A",
+                        "reviews": reviews or "N/A",
                     }
                 )
 
@@ -221,11 +273,24 @@ def _parse_products_from_soup(soup: BeautifulSoup) -> List[Dict]:
             price_el = book.select_one(".price_color")
             availability_el = book.select_one(".availability")
 
+            # Rating on books.toscrape.com is via classes like "star-rating Three"
+            rating_el = book.select_one("p.star-rating")
+            rating = None
+            if rating_el and rating_el.has_attr("class"):
+                # Take the non-generic class as rating text (e.g. "Three")
+                rating_classes = [
+                    cls for cls in rating_el["class"] if cls.lower() != "star-rating"
+                ]
+                if rating_classes:
+                    rating = rating_classes[0]
+
             products.append(
                 {
                     "title": title or _get_text_or_none(book.h3) or "Unknown title",
                     "price": _get_text_or_none(price_el) or "N/A",
                     "availability": _get_text_or_none(availability_el) or "Unknown",
+                    "rating": rating or "N/A",
+                    "reviews": "N/A",
                 }
             )
 
