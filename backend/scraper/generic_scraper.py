@@ -82,9 +82,25 @@ def _extract_products_from_ld(ld_obj) -> List[Dict]:
                 aggregate = aggregate[0] if aggregate else {}
 
             if isinstance(aggregate, dict):
-                rating = aggregate.get("ratingValue") or aggregate.get(
-                    "bestRating"
-                )
+                raw_rating = aggregate.get("ratingValue")
+                best_rating = aggregate.get("bestRating")
+
+                # Normalize rating to a 0–5 scale where possible
+                try:
+                    if raw_rating is not None:
+                        rv = float(raw_rating)
+                        if best_rating is not None:
+                            br = float(best_rating)
+                            if br > 0:
+                                rating = round((rv / br) * 5, 2)
+                            else:
+                                rating = round(rv, 2)
+                        else:
+                            # Assume already out of 5
+                            rating = round(rv, 2)
+                except (TypeError, ValueError):
+                    rating = None
+
                 reviews = (
                     aggregate.get("reviewCount")
                     or aggregate.get("ratingCount")
@@ -95,6 +111,15 @@ def _extract_products_from_ld(ld_obj) -> List[Dict]:
             if reviews is None and isinstance(obj.get("review"), list):
                 reviews = len(obj["review"])
 
+            # Clean up reviews into an integer if possible
+            if isinstance(reviews, str):
+                m = re.search(r"\d+", reviews)
+                if m:
+                    try:
+                        reviews = int(m.group(0))
+                    except ValueError:
+                        reviews = None
+
             if name or price:
                 # Fill missing fields with readable placeholders
                 products.append(
@@ -102,8 +127,14 @@ def _extract_products_from_ld(ld_obj) -> List[Dict]:
                         "title": (name or "Unknown title"),
                         "price": str(price) if price is not None else "N/A",
                         "availability": availability or "Unknown",
-                        "rating": str(rating) if rating is not None else "N/A",
-                        "reviews": str(reviews) if reviews is not None else "N/A",
+                        "rating": (
+                            f"{rating:.1f}" if isinstance(rating, (int, float)) else "N/A"
+                        ),
+                        "reviews": (
+                            str(int(reviews))
+                            if isinstance(reviews, (int, float))
+                            else "N/A"
+                        ),
                     }
                 )
 
@@ -226,10 +257,18 @@ def _parse_products_from_soup(soup: BeautifulSoup) -> List[Dict]:
             )
             rating = None
             if rating_el:
-                # Look for a number like "4.5" or "4"
-                m = re.search(r"\d+(\.\d+)?", rating_el.get_text(" ", strip=True))
+                text = rating_el.get_text(" ", strip=True)
+                # Prefer patterns that explicitly mention "out of 5" or "/5"
+                m = re.search(
+                    r"(\d+(\.\d+)?)\s*(?:/|out of)\s*5", text, flags=re.IGNORECASE
+                )
                 if m:
-                    rating = m.group(0)
+                    rating = m.group(1)
+                else:
+                    # Fallback: any first number like "4.5" or "4"
+                    m = re.search(r"\d+(\.\d+)?", text)
+                    if m:
+                        rating = m.group(0)
 
             # Reviews count candidates
             reviews_el = (
@@ -277,19 +316,27 @@ def _parse_products_from_soup(soup: BeautifulSoup) -> List[Dict]:
             rating_el = book.select_one("p.star-rating")
             rating = None
             if rating_el and rating_el.has_attr("class"):
-                # Take the non-generic class as rating text (e.g. "Three")
                 rating_classes = [
                     cls for cls in rating_el["class"] if cls.lower() != "star-rating"
                 ]
                 if rating_classes:
-                    rating = rating_classes[0]
+                    word = rating_classes[0].lower()
+                    mapping = {
+                        "one": 1,
+                        "two": 2,
+                        "three": 3,
+                        "four": 4,
+                        "five": 5,
+                    }
+                    if word in mapping:
+                        rating = mapping[word]
 
             products.append(
                 {
                     "title": title or _get_text_or_none(book.h3) or "Unknown title",
                     "price": _get_text_or_none(price_el) or "N/A",
                     "availability": _get_text_or_none(availability_el) or "Unknown",
-                    "rating": rating or "N/A",
+                    "rating": f"{rating:.1f}" if isinstance(rating, (int, float)) else "N/A",
                     "reviews": "N/A",
                 }
             )
