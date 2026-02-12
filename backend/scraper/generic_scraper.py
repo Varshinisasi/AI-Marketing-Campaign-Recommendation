@@ -234,7 +234,19 @@ def _parse_products_from_soup(soup: BeautifulSoup) -> List[Dict]:
             )
             price = None
             if price_el:
-                price = price_el.get("content") or _get_text_or_none(price_el)
+                # For complex price blocks (regular price, sale price, "you'll save"),
+                # the raw text can be very long. Try to extract a single currency amount.
+                raw_price = price_el.get("content") or price_el.get_text(" ", strip=True)
+                m = re.search(r"₹\s*([\d,]+(?:\.\d+)?)", raw_price)
+                if m:
+                    price = f"₹{m.group(1)}"
+                else:
+                    # Fallback: first number, otherwise full text
+                    m = re.search(r"\d+(\.\d+)?", raw_price)
+                    if m:
+                        price = m.group(0)
+                    else:
+                        price = _get_text_or_none(price_el)
 
             # Availability candidates
             availability_el = (
@@ -278,9 +290,15 @@ def _parse_products_from_soup(soup: BeautifulSoup) -> List[Dict]:
             )
             reviews = None
             if reviews_el:
-                m = re.search(r"\d+", reviews_el.get_text(" ", strip=True))
-                if m:
-                    reviews = m.group(0)
+                text = reviews_el.get_text(" ", strip=True)
+                # There may be multiple numbers (price + review count).
+                # When the word "review" appears, the LAST number is usually the count.
+                nums = re.findall(r"\d+", text)
+                if nums:
+                    if "review" in text.lower():
+                        reviews = nums[-1]
+                    else:
+                        reviews = nums[0]
 
             # Build a product row if we have at least a title or price.
             # Try extra fallbacks so cells are not blank.
