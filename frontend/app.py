@@ -13,7 +13,7 @@ if "scraped_results" not in st.session_state:
 if "scraped_insights" not in st.session_state:
     st.session_state["scraped_insights"] = None
 
-url = st.text_input("Website URL", "https://deyga.in")
+url = st.text_input("Website URL", "Enter your website URL")
 
 if st.button("Scrape Data"):
     with st.spinner("Scraping website..."):
@@ -35,7 +35,7 @@ if st.button("Scrape Data"):
                 st.session_state["scraped_results"] = data["results"]
                 st.session_state["scraped_insights"] = data.get("insights", {})
                 st.success(
-                    "Scraping and analysis successful. Use the sidebar pages to view each section."
+                    "Scraping and analysis successful."
                 )
             else:
                 st.session_state["scraped_results"] = None
@@ -47,10 +47,3 @@ if st.button("Scrape Data"):
             st.session_state["scraped_insights"] = None
             st.error(f"Backend not running or invalid URL\n{e}")
 
-st.markdown("---")
-st.markdown("### How to view results")
-st.write(
-    "After running a scrape, use the pages shown in the left sidebar "
-    "to navigate to Raw Product Data, Store Summary, Recommendations, "
-    "Platforms, Discounts, and AI-Generated Ad Captions. Each section opens as a separate page."
-)
